@@ -1,0 +1,13 @@
+# macOS
+.DS_Store
+
+# editor
+.vscode/
+.idea/
+
+# logs and local test artifacts
+*.log
+
+# only if you later add the TypeScript builder tooling
+node_modules/
+dist/
