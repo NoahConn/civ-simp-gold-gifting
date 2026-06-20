@@ -11,6 +11,9 @@
 # compiled installer (built locally, distributed via GitHub Releases)
 *.exe
 
+# icon preview (throwaway; regenerate with tools/make-coin-icon.ps1)
+civsimp_gg_preview.png
+
 # only if you later add the TypeScript builder tooling
 node_modules/
 dist/
