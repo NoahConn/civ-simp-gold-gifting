@@ -1,20 +1,23 @@
 <#
 .SYNOPSIS
-    Civilization VII - "Civ Simp Gold Gifting" mod installer.
+    THE GILDED ENVOY - the setup rite for the Civ VII "Gold Gifting" mod.
 .DESCRIPTION
-    One-step installer for a non-technical player. Locates (or creates) the Civ VII
-    user Mods directory, downloads the mod from GitHub (no git required), installs
-    it, verifies it, and prints in-game instructions. Friendly, guided, retro-styled,
-    and deliberately paced so it feels like an event rather than a flicker.
+    A guided, retro-styled setup that locates (or creates) the Civ VII user Mods
+    directory, downloads the mod from GitHub (no git required), installs it,
+    verifies it, and prints in-game instructions.
 
-    Targets Windows PowerShell 5.1 (default on Windows 10/11) and is PowerShell 7
-    compatible. No admin rights, no git, no developer mode required.
+    The FIRST run on a machine plays the full ceremony (banner, varied loading
+    animations, narration). Every run after that is FAST (no pacing), tracked by a
+    small marker file in the Civ VII AppData folder.
 
-    Recommended one-liner (paste into PowerShell):
+    Targets Windows PowerShell 5.1 (default on Windows 10/11), PowerShell 7 compatible.
+    No admin rights, no git, no developer mode required.
+
+    One-liner:
       [Net.ServicePointManager]::SecurityProtocol='Tls12'; iex (irm 'https://raw.githubusercontent.com/NoahConn/civ-simp-gold-gifting/main/install.ps1')
 
-    Tip: set the environment variable CIVMOD_INSTANT=1 to skip all the pacing and
-    install instantly (handy for the mod author re-testing).
+    Env vars: CIVMOD_INSTANT=1 forces the fast path even on a first run;
+              CIVMOD_SHOW=1 replays the full ceremony even after the first run.
 #>
 
 # ============================================================================
@@ -25,34 +28,36 @@ $InnerPrefix = 'civ-simp-gold-gifting'                 # zip top folder starts w
 $ZipUrl      = 'https://github.com/NoahConn/civ-simp-gold-gifting/archive/refs/heads/main.zip'
 $ModInfoName = 'civ-simp-gold-gifting.modinfo'         # must land at dest root
 
-# 'Stop' is intentional: it promotes non-terminating errors (a failed download,
-# copy, etc.) to terminating ones so the single try/catch below can trap them and
-# show a plain-English message instead of a scary red stack trace.
+# 'Stop' is intentional: it promotes non-terminating errors to terminating ones
+# so the single try/catch below can trap them and show a plain-English message.
 $ErrorActionPreference = 'Stop'
 
-# --- Pacing knobs (the "experience"). CIVMOD_INSTANT=1 disables all of it. ----
-$Instant     = ($env:CIVMOD_INSTANT -eq '1')
-$TypeSpeedMs = 16     # per-character typewriter delay
-$StepSpinMs  = 1100   # how long each step's spinner dances
-$BeatMs      = 450    # the little pause between beats
-$RevealMs    = 140    # delay between banner lines as they appear
-# Carriage-return redraw (the spinner) only works cleanly in the real console.
+# --- Paths (derived purely from %LOCALAPPDATA%; no Steam, no user input). -----
+$CivAppData = Join-Path $env:LOCALAPPDATA "Firaxis Games\Sid Meier's Civilization VII"
+$ModsDir    = Join-Path $CivAppData "Mods"
+$MarkerPath = Join-Path $CivAppData ".gilded-envoy-installed"   # "I've run here before"
+
+# --- First-run vs fast-path decision --------------------------------------
+# First run = full ceremony. Later runs = instant. Env vars can override either way.
+$firstRun = $true
+try { if (Test-Path -LiteralPath $MarkerPath) { $firstRun = $false } } catch { }
+$Instant = ($env:CIVMOD_INSTANT -eq '1') -or ((-not $firstRun) -and ($env:CIVMOD_SHOW -ne '1'))
+
+# --- Pacing knobs (the "ceremony"). Ignored entirely when $Instant. ----------
+$TypeSpeedMs = 20     # per-character typewriter delay
+$StepAnimMs  = 1700   # how long each step's animation plays
+$BeatMs      = 600    # the pause between beats
+$RevealMs    = 200    # delay between banner lines as they appear
+# Carriage-return redraw (the animations) only works cleanly in the real console.
 $CanRedraw   = ($Host.Name -eq 'ConsoleHost')
 
 # ============================================================================
-#  RETRO CIV-STYLE PRESENTATION HELPERS
-#  Uses -ForegroundColor (ConsoleColor) only, which renders reliably on stock
-#  Windows PowerShell 5.1 consoles - no ANSI/256-color dependency.
+#  RETRO PRESENTATION HELPERS  (ConsoleColor only; ASCII-safe; PS 5.1 friendly)
 # ============================================================================
 
-# A beat of silence for dramatic effect.
 function Beat { param([int]$Ms = $BeatMs) if (-not $Instant) { Start-Sleep -Milliseconds $Ms } }
 
-# Plain colored line (instant).
-function Say {
-    param([string]$Text, [ConsoleColor]$Color = 'Gray')
-    Write-Host $Text -ForegroundColor $Color
-}
+function Say { param([string]$Text, [ConsoleColor]$Color = 'Gray') Write-Host $Text -ForegroundColor $Color }
 
 # Typewriter line - reveals one character at a time, like a herald's proclamation.
 function Type-Line {
@@ -65,58 +70,97 @@ function Type-Line {
     Write-Host ""
 }
 
-# Roman-numeral step bullet, because of course.
 function Say-Step {
     param([string]$Numeral, [string]$Text)
     Write-Host ("   [ {0,-3}] " -f $Numeral) -ForegroundColor DarkYellow -NoNewline
     Write-Host $Text -ForegroundColor White
 }
 
-# A spinner that dances for a fixed (cosmetic) duration under a flavor label,
-# then clears itself. Purely for the experience - the real work runs right after.
-function Spin {
-    param([string]$Label, [int]$Ms = $StepSpinMs, [ConsoleColor]$Color = 'DarkYellow')
+# Clear the current redraw line.
+function Clear-Line { if ($CanRedraw) { Write-Host ("`r" + (' ' * 78) + "`r") -NoNewline } }
+
+# --- ANIMATION 1: a bouncing scanner sweeping a track (survey / sort) ---------
+function Anim-Scan {
+    param([string]$Label, [int]$Ms = $StepAnimMs, [ConsoleColor]$Color = 'DarkYellow')
     if ($Instant) { return }
-    $frames = '|','/','-','\'
-    $sw = [System.Diagnostics.Stopwatch]::StartNew()
-    $i = 0
+    $w = 16; $sw = [System.Diagnostics.Stopwatch]::StartNew(); $pos = 0; $dir = 1
     if ($CanRedraw) {
         while ($sw.ElapsedMilliseconds -lt $Ms) {
-            Write-Host ("`r       ( {0} ) {1}" -f $frames[$i % 4], $Label) -ForegroundColor $Color -NoNewline
-            Start-Sleep -Milliseconds 95
-            $i++
+            $track = (' ' * $pos) + '<o>' + (' ' * ($w - $pos))
+            Write-Host ("`r       {0} [{1}]" -f $Label, $track) -ForegroundColor $Color -NoNewline
+            Start-Sleep -Milliseconds 75
+            $pos += $dir; if ($pos -ge $w -or $pos -le 0) { $dir *= -1 }
         }
-        # Wipe the spinner line so the real result prints cleanly beneath it.
-        Write-Host ("`r" + (' ' * 74) + "`r") -NoNewline
+        Clear-Line
     } else {
         Write-Host ("       " + $Label) -ForegroundColor $Color -NoNewline
-        while ($sw.ElapsedMilliseconds -lt $Ms) { Write-Host "." -ForegroundColor $Color -NoNewline; Start-Sleep -Milliseconds 220 }
+        while ($sw.ElapsedMilliseconds -lt $Ms) { Write-Host "." -NoNewline -ForegroundColor $Color; Start-Sleep -Milliseconds 200 }
+        Write-Host ""
+    }
+}
+
+# --- ANIMATION 2: a spinning gold coin (count / inspect) ---------------------
+function Anim-Coin {
+    param([string]$Label, [int]$Ms = $StepAnimMs, [ConsoleColor]$Color = 'Yellow')
+    if ($Instant) { return }
+    $frames = '( $ )', '( = )', '( - )', '( _ )', '( - )', '( = )'
+    $sw = [System.Diagnostics.Stopwatch]::StartNew(); $i = 0
+    if ($CanRedraw) {
+        while ($sw.ElapsedMilliseconds -lt $Ms) {
+            Write-Host ("`r       {0}  {1}" -f $frames[$i % $frames.Count], $Label) -ForegroundColor $Color -NoNewline
+            Start-Sleep -Milliseconds 110
+            $i++
+        }
+        Clear-Line
+    } else {
+        Write-Host ("       " + $Label) -ForegroundColor $Color -NoNewline
+        while ($sw.ElapsedMilliseconds -lt $Ms) { Write-Host "." -NoNewline -ForegroundColor $Color; Start-Sleep -Milliseconds 200 }
+        Write-Host ""
+    }
+}
+
+# --- ANIMATION 3: a filling progress bar with a head and % (download/install) -
+function Anim-Bar {
+    param([string]$Label, [int]$Ms = $StepAnimMs, [ConsoleColor]$Color = 'DarkYellow')
+    if ($Instant) { return }
+    $w = 22; $sw = [System.Diagnostics.Stopwatch]::StartNew()
+    if ($CanRedraw) {
+        while ($sw.ElapsedMilliseconds -lt $Ms) {
+            $p = [math]::Min(1.0, $sw.ElapsedMilliseconds / $Ms)
+            $fill = [int]($p * $w)
+            $bar = ('=' * $fill)
+            if ($fill -lt $w) { $bar += '>'; $bar += (' ' * ($w - $fill - 1)) }
+            Write-Host ("`r       {0} [{1}] {2,3}%" -f $Label, $bar, [int]($p * 100)) -ForegroundColor $Color -NoNewline
+            Start-Sleep -Milliseconds 55
+        }
+        Write-Host ("`r       {0} [{1}] 100%" -f $Label, ('=' * $w)) -ForegroundColor Green -NoNewline
+        Start-Sleep -Milliseconds 200
+        Clear-Line
+    } else {
+        Write-Host ("       " + $Label) -ForegroundColor $Color -NoNewline
+        while ($sw.ElapsedMilliseconds -lt $Ms) { Write-Host "=" -NoNewline -ForegroundColor $Color; Start-Sleep -Milliseconds 120 }
         Write-Host ""
     }
 }
 
 function Show-Banner {
-    # Revealed line by line for a little drama.
-    $lines = @(
-        @("  ==============================================================", 'DarkYellow'),
-        @("       .-------.      C I V I L I Z A T I O N   V I I", 'Yellow'),
-        @("      (  `$ `$ `$  )", 'Yellow'),
-        @("       '-------'    G O L D   G I F T I N G   -   M O D   S E T U P", 'Yellow'),
-        @("  ==============================================================", 'DarkYellow')
-    )
     Write-Host ""
-    foreach ($l in $lines) {
-        Write-Host $l[0] -ForegroundColor $l[1]
-        if (-not $Instant) { Start-Sleep -Milliseconds $RevealMs }
-    }
+    Write-Host "  ==============================================================" -ForegroundColor DarkYellow
+    if (-not $Instant) { Start-Sleep -Milliseconds $RevealMs }
+    Write-Host '       .------.' -ForegroundColor Yellow
+    if (-not $Instant) { Start-Sleep -Milliseconds $RevealMs }
+    Write-Host '      ( $$$$$$ )     T H E   G I L D E D   E N V O Y' -ForegroundColor Yellow
+    if (-not $Instant) { Start-Sleep -Milliseconds $RevealMs }
+    Write-Host "       '------'      Civ VII  -  Gold Gifting  -  a setup rite" -ForegroundColor Yellow
+    if (-not $Instant) { Start-Sleep -Milliseconds $RevealMs }
+    Write-Host "  ==============================================================" -ForegroundColor DarkYellow
     Beat
-    Type-Line "     Sit back, Consul. I shall handle the installation for you." Gray
+    Type-Line "     Sit back, Consul. The Envoy shall see your gift delivered." Gray
     Write-Host ""
     Beat
 }
 
-# Always pause at the very end so a double-clicked window does not vanish before
-# the result can be read. Safe under a non-interactive host (falls back to wait).
+# Pause at the very end so a double-clicked window does not vanish.
 function Pause-AtEnd {
     Write-Host ""
     Write-Host "  --------------------------------------------------------------" -ForegroundColor DarkGray
@@ -132,33 +176,22 @@ $work = $null
 try {
     Show-Banner
 
-    # --- Force TLS 1.2 BEFORE any web call. Stock Windows 10 / PS 5.1 can ------
-    # --- otherwise default to TLS 1.0 and fail GitHub's TLS handshake. -bor ----
-    # --- keeps TLS 1.3 where the platform already negotiates it. --------------
+    # --- Force TLS 1.2 BEFORE any web call (stock Win10/PS 5.1 may default low). -
     try {
         [Net.ServicePointManager]::SecurityProtocol =
             [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
     } catch {
-        # Some old frameworks don't expose Tls12 by name; 3072 is its numeric value.
         [Net.ServicePointManager]::SecurityProtocol =
             [Net.ServicePointManager]::SecurityProtocol -bor 3072
     }
 
     # ------------------------------------------------------------------------
     #  STEP I - Locate / create the Civ VII user Mods directory.
-    #  Path is 100% derived from $env:LOCALAPPDATA, independent of where Steam
-    #  or Civ VII is installed, and immune to OneDrive (AppData\Local is never
-    #  redirected). No user input required - he never has to find Steam.
     # ------------------------------------------------------------------------
     Say-Step 'I' "Finding your Civilization VII Mods folder..."
-    Spin "Surveying the empire for the royal archives..."
-
-    $CivAppData = Join-Path $env:LOCALAPPDATA "Firaxis Games\Sid Meier's Civilization VII"
-    $ModsDir    = Join-Path $CivAppData "Mods"
+    Anim-Scan "Surveying the realm for the royal archives..."
 
     try {
-        # -Force builds the full parent chain and is a SAFE no-op if it already
-        # exists (returns the existing dir; does NOT error, does NOT wipe it).
         New-Item -ItemType Directory -Path $ModsDir -Force | Out-Null
     } catch {
         throw "PERMISSION: Could not create the Mods folder at:`n      $ModsDir`n      $($_.Exception.Message)"
@@ -168,16 +201,14 @@ try {
 
     # ------------------------------------------------------------------------
     #  STEP II - Soft "is Civ VII installed?" check. INFORMATIONAL ONLY.
-    #  Never blocks the install; the files land regardless.
     # ------------------------------------------------------------------------
     Say-Step 'II' "Checking that Civilization VII looks installed..."
-    Spin "Consulting the royal census..."
+    Anim-Coin "Consulting the royal census..."
 
     $appDataPresent = Test-Path -LiteralPath $CivAppData
 
     $manifestFound = $false
     if (-not $appDataPresent) {
-        # Only bother with the Steam fallback if the AppData signal is absent.
         $steamPath = $null
         foreach ($k in 'HKCU:\SOFTWARE\Valve\Steam',
                        'HKLM:\SOFTWARE\WOW6432Node\Valve\Steam',
@@ -219,12 +250,10 @@ try {
     Beat
 
     # ------------------------------------------------------------------------
-    #  STEP III - Download the mod's main-branch zip from GitHub (no git needed).
-    #  The github.com URL 302-redirects to codeload; Invoke-WebRequest follows it
-    #  automatically. Repo is public, so no auth/token is required.
+    #  STEP III - Download the mod's main-branch zip from GitHub (no git).
     # ------------------------------------------------------------------------
     Say-Step 'III' "Downloading the mod from GitHub..."
-    Spin "Dispatching couriers to the Great Library of GitHub..."
+    Anim-Bar "Couriers ride for the Great Library of GitHub..."
 
     $work = Join-Path $env:TEMP ('civmod_' + [guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Path $work -Force | Out-Null
@@ -242,12 +271,10 @@ try {
     Beat
 
     # ------------------------------------------------------------------------
-    #  STEP IV - Extract. The archive contains ONE top folder named
-    #  "civ-simp-gold-gifting-main" (repo + branch). Match by prefix so a future
-    #  default-branch rename doesn't break us.
+    #  STEP IV - Extract. Archive has ONE top folder "civ-simp-gold-gifting-main".
     # ------------------------------------------------------------------------
     Say-Step 'IV' "Unpacking the mod files..."
-    Spin "Unloading the caravan..."
+    Anim-Scan "Unloading the caravan and sorting the goods..."
 
     Expand-Archive -Path $zip -DestinationPath $ex -Force
 
@@ -268,13 +295,10 @@ try {
     Beat
 
     # ------------------------------------------------------------------------
-    #  STEP V - Install: replace any prior copy IDEMPOTENTLY, then copy in.
-    #  Guard against a junction/symlink: Remove-Item -Recurse THROUGH a reparse
-    #  point can delete the LINK TARGET's real files. So when the existing entry
-    #  is a link, delete the LINK ONLY.
+    #  STEP V - Install: replace any prior copy IDEMPOTENTLY (junction-safe).
     # ------------------------------------------------------------------------
     Say-Step 'V' "Installing into your Mods folder..."
-    Spin "Laying the golden mosaic into place..."
+    Anim-Bar "Laying the golden mosaic into place..."
 
     $dest = Join-Path $ModsDir $ModName
     if (Test-Path -LiteralPath $dest) {
@@ -286,15 +310,13 @@ try {
         }
         Say "       Cleared the old tapestry from the wall." DarkGray
     }
-    # dest no longer exists, so -Recurse copies the CONTENTS of $src into a fresh
-    # $dest (modinfo lands at dest root, no nested -main folder).
     Copy-Item -LiteralPath $src -Destination $dest -Recurse -Force
 
     # ------------------------------------------------------------------------
     #  STEP VI - Verify the .modinfo landed at the destination root.
     # ------------------------------------------------------------------------
     Say-Step 'VI' "Verifying the installation..."
-    Spin "Inspecting the imperial seal..."
+    Anim-Coin "Pressing the imperial seal..."
 
     if (-not (Test-Path -LiteralPath (Join-Path $dest $ModInfoName))) {
         throw "Verification failed: '$ModInfoName' is missing after install."
@@ -302,10 +324,12 @@ try {
 
     $installOK = $true
     Say ("       Seal verified. Installed to:`n       " + $dest) Green
+
+    # Record that the ceremony has played here, so future runs go fast.
+    try { Set-Content -LiteralPath $MarkerPath -Value ((Get-Date).ToString('o')) -ErrorAction SilentlyContinue } catch { }
     Beat
 }
 catch {
-    # ----- Plain-English error routing for a non-technical user -----
     $msg = $_.Exception.Message
     $resp = $null
     try { $resp = $_.Exception.Response } catch { }
@@ -340,21 +364,20 @@ catch {
     }
 }
 finally {
-    # Always clean up scratch space; ignore failures.
     if ($work) { Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue }
 }
 
 # ============================================================================
-#  SUCCESS MESSAGE + WHAT-TO-DO-IN-GAME (only when the install actually worked)
+#  SUCCESS MESSAGE + WHAT-TO-DO-IN-GAME
 # ============================================================================
 if ($installOK) {
     Beat
     Write-Host ""
     Write-Host "  ==============================================================" -ForegroundColor DarkYellow
-    if (-not $Instant) { Start-Sleep -Milliseconds 250 }
+    if (-not $Instant) { Start-Sleep -Milliseconds 350 }
     Write-Host "        *   *   *    H U Z Z A H !    *   *   *" -ForegroundColor Green
-    if (-not $Instant) { Start-Sleep -Milliseconds 250 }
-    Write-Host "             The mod is installed, Consul." -ForegroundColor Green
+    if (-not $Instant) { Start-Sleep -Milliseconds 350 }
+    Write-Host "        The Gilded Envoy has delivered your gift." -ForegroundColor Green
     Write-Host "  ==============================================================" -ForegroundColor DarkYellow
     Write-Host ""
     Beat
@@ -368,7 +391,7 @@ if ($installOK) {
     Write-Host "  IMPORTANT FOR MULTIPLAYER:" -ForegroundColor Yellow
     Write-Host "     BOTH players must have the SAME mod AND the SAME version" -ForegroundColor Yellow
     Write-Host "     enabled, or the match won't start together. If Noah sends" -ForegroundColor Yellow
-    Write-Host "     an update later, just run this installer again." -ForegroundColor Yellow
+    Write-Host "     an update later, just run the Envoy again." -ForegroundColor Yellow
     Write-Host ""
     Type-Line "  May your treasury be generous and your rivals grateful." Green
 }
