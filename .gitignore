@@ -8,6 +8,9 @@
 # logs and local test artifacts
 *.log
 
+# compiled installer (built locally, distributed via GitHub Releases)
+*.exe
+
 # only if you later add the TypeScript builder tooling
 node_modules/
 dist/
