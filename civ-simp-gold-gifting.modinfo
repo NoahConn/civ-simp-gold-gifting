@@ -18,25 +18,21 @@
   </ActionCriteria>
 
   <ActionGroups>
-    <!-- game scope: effects that apply inside an active game -->
+    <!-- game scope: the diplomacy action + its gameplay effects apply inside an
+         active game. The action-definition file and the <GameEffects> file are
+         loaded together so the EnterStageModifiers -> ModifierId references
+         resolve (both load through UpdateDatabase; the loader detects the root
+         element, exactly as the base game loads diplomacy-actions.xml alongside
+         diplomacy-gameeffects.xml). -->
     <ActionGroup id="gift-gold-game" scope="game" criteria="always">
       <Actions>
         <UpdateDatabase>
-          <Item>data/gift-gold-endeavor.sql</Item>
+          <Item>data/gift-gold-action.xml</Item>
+          <Item>data/gift-gold-effects.xml</Item>
         </UpdateDatabase>
         <UpdateText>
-          <Item>text/en_us/gift-gold-text.sql</Item>
+          <Item>text/en_us/gift-gold-text.xml</Item>
         </UpdateText>
-      </Actions>
-    </ActionGroup>
-
-    <!-- shell scope: required so the entry is registered as early as setup,
-         otherwise diplomacy entries can silently fail to apply -->
-    <ActionGroup id="gift-gold-shell" scope="shell" criteria="always">
-      <Actions>
-        <UpdateDatabase>
-          <Item>data/gift-gold-endeavor.sql</Item>
-        </UpdateDatabase>
       </Actions>
     </ActionGroup>
   </ActionGroups>

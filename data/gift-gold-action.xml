@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Civ Simp Gold Gifting: DIPLOMACY_ACTION_GIFT_GOLD
+  ==================================================
+  A diplomacy action that OFFERS a fixed Gold gift to ANY met major leader (not
+  just allies). The receiver can ACCEPT or DECLINE. On accept, Gold moves from
+  giver to receiver and the relationship improves; on decline, nothing happens.
+
+  Design, after reverse-engineering the 1.4.0 install and testing in-game:
+
+  * TARGETING — PlayerOperationType=COOPERATIVE_YIELDS_DIPLOMATIC_ACTION (the op
+    behind the non-ally endeavors MINOR_TRADE / MILITARY_AID / IMPROVE_TRADE_-
+    RELATIONS), NOT the ally-only SEND_GOLD op. SEND_GOLD_DIPLOMATIC_ACTION has
+    an alliance gate compiled into the engine (m_bRequiresAlliance) that the
+    AllyOnly column cannot override, and it was also the only source of the
+    runtime gold-amount picker. So this action targets any met major leader but
+    gifts a FIXED amount (see data/gift-gold-effects.xml).
+
+  * DECLINABILITY — is emergent: a non-AllyOnly cooperative action that carries a
+    RequestString raises an accept/decline reaction window for the target. The
+    base game's declinable endeavors (e.g. IMPROVE_TRADE_RELATIONS) carry ZERO
+    DiplomaticActionResponses rows, so we declare none either (an ally-only
+    ACCEPT row, inherited from SEND_GOLD, was removed — it could force
+    auto-accept). RejectionRefundsInfluence="true" makes a decline a clean refund.
+
+  * ACCEPT-GATED EFFECTS — the gold and the relationship favor must fire ONLY on
+    accept. Plain completion-stage effects fire regardless of the response, so:
+      - Gold goes through an accept-only attach wrapper
+        (PLAYER_MOD_GIFT_GOLD_COMPLETE -> EFFECT_DAE_COOPERATIVE_ATTACH_MODIFIER,
+        InitialPlayerAccept/TargetPlayerAccept children), mirroring MILITARY_AID
+        and IMPROVE_TRADE_RELATIONS.
+      - Favor is bound to the ACCEPT response via DiplomaticActionResponseModifiers
+        (the symmetric counterpart of how the base game applies grievances on
+        REJECT), not the completion stage.
+
+  Modifiers are authored in data/gift-gold-effects.xml (a <GameEffects> file).
+-->
+<Database>
+
+  <!-- 1) Type rows. Every Type referenced elsewhere must be declared first. -->
+  <Types>
+    <Row Type="DIPLOMACY_ACTION_GIFT_GOLD" Kind="KIND_DIPLOMACY_ACTION" />
+    <Row Type="DIPLOMACY_GIFT_GOLD_COMPLETE" Kind="KIND_DIPLOMACY_ACTION_STAGE" />
+  </Types>
+
+  <!-- 2) The action definition. Non-ally, instant, with a RequestString so the
+         target gets an accept/decline offer (like IMPROVE_TRADE_RELATIONS). -->
+  <DiplomacyActions>
+    <Row DiplomacyActionType="DIPLOMACY_ACTION_GIFT_GOLD"
+         Name="LOC_DIPLOMACY_PROJECT_GIFT_GOLD_NAME"
+         Description="LOC_DIPLOMACY_PROJECT_GIFT_GOLD_DESCRIPTION"
+         BaseTokenCost="1"
+         BaseDuration="0"
+         Symmetrical="true"
+         IsMutualSupport="true"
+         TargetFavors="0"
+         TargetFavorsFreq="0"
+         AllyOnly="false"
+         RequestString="LOC_DIPLOMACY_PROJECT_GIFT_GOLD_REQUEST"
+         UIIconPath="blp:dipaction_sendaid"
+         RequiresUnlock="false"
+         RejectionRefundsInfluence="true"/>
+  </DiplomacyActions>
+
+  <!-- 3) Which influence-token slot this action uses (global, like SEND_GOLD). -->
+  <DiplomaticActionValidTokens>
+    <Row TokenType="DIPLOMACY_TOKEN_GLOBAL" DiplomacyActionType="DIPLOMACY_ACTION_GIFT_GOLD"/>
+  </DiplomaticActionValidTokens>
+
+  <!-- 4) The single completion stage. Instant (ProgressRequirement=0). -->
+  <DiplomaticActionStages>
+    <Row DiplomacyActionType="DIPLOMACY_ACTION_GIFT_GOLD" StageType="DIPLOMACY_GIFT_GOLD_COMPLETE" ProgressRequirement="0"/>
+  </DiplomaticActionStages>
+
+  <!-- 5) Completion-stage modifier: the accept-gated gold wrapper. Its children
+         (recipient +100, giver -100) are attached ONLY if the target accepts.
+         The relationship favor is NOT here - it is gated on the ACCEPT response
+         in DiplomaticActionResponseModifiers (section 9) so it cannot fire on a
+         decline. -->
+  <EnterStageModifiers>
+    <Row StageType="DIPLOMACY_GIFT_GOLD_COMPLETE" ModifierId="PLAYER_MOD_GIFT_GOLD_COMPLETE" />
+  </EnterStageModifiers>
+
+  <!-- 6) UI wiring. COOPERATIVE_YIELDS_DIPLOMATIC_ACTION (the non-ally endeavor
+         op used by Minor Trade / Military Aid) + the ENDEAVOR group, so any met
+         major leader is a valid target. Target2=NONE: no runtime amount picker
+         (that was exclusive to the ally-only SEND_GOLD op); the gift amount is
+         fixed in data/gift-gold-effects.xml. -->
+  <DiplomaticProjects_UI_Data>
+    <Row DiplomacyActionType="DIPLOMACY_ACTION_GIFT_GOLD"
+         DiplomacyActionGroup="DIPLOMACY_ACTION_GROUP_ENDEAVOR"
+         PlayerOperationType="COOPERATIVE_YIELDS_DIPLOMATIC_ACTION"
+         Target1Type="DIPLOMACY_TARGET_PLAYER"
+         Target2Type="DIPLOMACY_TARGET_NONE"
+         MaxNumEnvoys="1"
+         MinNumVirtEnvoys="1"
+         MaxNumVirtEnvoys="2"
+         MaxNumSupportEnvoys="0"
+         MaxNumOpposeEnvoys="0"
+         Description="LOC_DIPLOMACY_PROJECT_GIFT_GOLD_DESCRIPTION"
+         ActiveDescription="LOC_DIPLOMACY_PROJECT_GIFT_GOLD_DESCRIPTION"/>
+  </DiplomaticProjects_UI_Data>
+
+  <!-- 7) Envoy bonus data (all zero, like the base endeavors). -->
+  <DiplomacyBonusEnvoyData>
+    <Row DiplomacyActionType="DIPLOMACY_ACTION_GIFT_GOLD" InitialUnfriendly="0" InitialFriendly="0" TargetUnfriendly="0" TargetFriendly="0"/>
+  </DiplomacyBonusEnvoyData>
+
+  <!-- 8) Influence cost to perform at each relationship level (free). -->
+  <DiplomaticActionInfluenceCosts>
+    <Row DiplomacyActionType="DIPLOMACY_ACTION_GIFT_GOLD" InfCostHostile="0" InfCostUnfriendly="0" InfCostNeutral="0" InfCostFriendly="0" InfCostHelpful="0"/>
+  </DiplomaticActionInfluenceCosts>
+
+  <!-- 9) Response outcomes. We declare NO DiplomaticActionResponses rows (matching
+         declinable base endeavors like IMPROVE_TRADE_RELATIONS, which surface the
+         accept/decline buttons via the engine). DiplomaticActionResponseModifiers
+         binds the relationship favor to the ACCEPT response, so the favor fires
+         only when the receiver accepts. The base game uses this same table to
+         apply grievances on REJECT; an ACCEPT-side row is the symmetric case
+         (see docs/schema-notes.md - confirm in-game that ACCEPT rows fire).
+         No REJECT row -> declining is a clean no-op (influence already refunded). -->
+  <DiplomaticActionResponseModifiers>
+    <Row DiplomacyActionType="DIPLOMACY_ACTION_GIFT_GOLD"
+         DiplomaticResponseType="DIPLOMACY_RESPONSE_ACCEPT"
+         ModifierId="PLAYER_MOD_GIFT_GOLD_FAVOR"
+         ModifierType="DIPLOMACY_MODIFIER_TYPE_ACTION"
+         ModifierTarget="DIPLOMACY_MODIFIER_TARGET_INITIAL"/>
+  </DiplomaticActionResponseModifiers>
+
+</Database>

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Civ Simp Gold Gifting: localized text (English).
+  Civ VII stores localized strings as <EnglishText> rows keyed by Tag, NOT in
+  the Civ-VI-style LocalizedText SQL table. This mirrors
+  Base/modules/base-standard/text/en_us/DiplomacyText.xml.
+-->
+<Database>
+  <EnglishText>
+    <Row Tag="LOC_DIPLOMACY_PROJECT_GIFT_GOLD_NAME">
+      <Text>Gift Gold</Text>
+    </Row>
+    <Row Tag="LOC_DIPLOMACY_PROJECT_GIFT_GOLD_DESCRIPTION">
+      <Text>Send [icon:YIELD_GOLD]Gold directly to another leader as a gift. Improves your relationship with them.</Text>
+    </Row>
+    <Row Tag="LOC_DIPLOMACY_PROJECT_GIFT_GOLD_REQUEST">
+      <Text>{1_leaderName} is sending you [icon:YIELD_GOLD]Gold as a gift.</Text>
+    </Row>
+    <Row Tag="LOC_DIPLOMACY_PROJECT_GIFT_GOLD_ACCEPT">
+      <Text>Accept {1_initialName}'s [icon:YIELD_GOLD]Gold gift.</Text>
+    </Row>
+  </EnglishText>
+</Database>

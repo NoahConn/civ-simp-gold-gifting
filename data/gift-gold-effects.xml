@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Civ Simp Gold Gifting: gameplay effects for DIPLOMACY_ACTION_GIFT_GOLD
+  =====================================================================
+  A <GameEffects> authoring file (same dialect as the base game's
+  Base/modules/base-standard/data/diplomacy-gameeffects.xml). The engine compiles
+  each <Modifier> into the Modifiers / ModifierArguments / DynamicModifiers rows.
+
+  The gift is an OFFER the target can accept or decline, so every effect must fire
+  ONLY on accept. Plain completion-stage grants fire regardless of the response,
+  so we use the base game's accept-gating patterns:
+
+   - GOLD: an attach wrapper (EFFECT_DAE_COOPERATIVE_ATTACH_MODIFIER) bound to the
+     COMPLETE stage. Its InitialPlayerAccept / TargetPlayerAccept children are
+     instantiated ONLY when the target accepts (engine: "...if the target selects
+     accept"). Mirrors MILITARY_AID (diplomacy-gameeffects.xml:234-253) and
+     IMPROVE_TRADE_RELATIONS (:348-355).
+   - FAVOR: bound to the ACCEPT response in DiplomaticActionResponseModifiers
+     (data/gift-gold-action.xml section 9), NOT the completion stage.
+-->
+<GameEffects xmlns="GameEffects">
+
+  <!-- Accept-gated wrapper. Bound to DIPLOMACY_GIFT_GOLD_COMPLETE. Its two named
+       children fire only when the target accepts; on decline neither attaches, so
+       no Gold moves. (MILITARY_AID's PLAYER_DIPLOMACY_MILITARY_AID_COMPLETE is the
+       same shape.) -->
+  <Modifier id="PLAYER_MOD_GIFT_GOLD_COMPLETE" collection="COLLECTION_OWNER" effect="EFFECT_DAE_COOPERATIVE_ATTACH_MODIFIER">
+    <String context="Name">LOC_DIPLOMACY_PROJECT_GIFT_GOLD_NAME</String>
+    <Argument name="InitialPlayerAccept">PLAYER_MOD_GIFT_GOLD_INITIATOR_ACCEPT</Argument>
+    <Argument name="TargetPlayerAccept">PLAYER_MOD_GIFT_GOLD_TARGET_ACCEPT</Argument>
+  </Modifier>
+
+  <!-- Recipient credit: +100 Gold, one-time. As the TargetPlayerAccept child the
+       attach makes the TARGET the owner, so COLLECTION_OWNER + EFFECT_PLAYER_GRANT_YIELD
+       credits the recipient - identical shape to the base
+       PLAYER_DIPLOMACY_IMPROVE_TRADE_RELATIONS_TARGET_GOLD (diplomacy-gameeffects.xml:352-355,
+       which grants the target 30 Gold). EFFECT_PLAYER_GRANT_YIELD is a one-time
+       lump grant (NOT EFFECT_PLAYER_ADJUST_YIELD, which is a per-turn rate). -->
+  <Modifier id="PLAYER_MOD_GIFT_GOLD_TARGET_ACCEPT" collection="COLLECTION_OWNER" effect="EFFECT_PLAYER_GRANT_YIELD" permanent="true">
+    <Argument name="Amount">100</Argument>
+    <Argument name="YieldType">YIELD_GOLD</Argument>
+  </Modifier>
+
+  <!-- Giver debit: -100 Gold, one-time, so the gift is a real transfer not free
+       money. Same one-time EFFECT_PLAYER_GRANT_YIELD with a negative Amount, on the
+       initiator. CONFIRM IN-GAME the giver's treasury drops by 100 once: a negative
+       lump grant is not used anywhere in base data, so if it is clamped/ignored this
+       child is the piece to rework (or drop, making it a free gift). -->
+  <Modifier id="PLAYER_MOD_GIFT_GOLD_INITIATOR_ACCEPT" collection="COLLECTION_OWNER" effect="EFFECT_PLAYER_GRANT_YIELD" permanent="true">
+    <Argument name="Amount">-100</Argument>
+    <Argument name="YieldType">YIELD_GOLD</Argument>
+  </Modifier>
+
+  <!-- Relationship improvement. EFFECT_DAE_COMPLETE_GRANT_FAVORS_GRIEVANCES posts a
+       named relationship event between the two players. Its argument names are
+       confirmed from the engine binary (FavorsAmount / TargetFavorsAmount /
+       EventType; see docs/schema-notes.md). FavorsAmount improves the initiator's
+       standing, TargetFavorsAmount the target's, with the positive FAVOR_FROM_ENDEAVOR
+       event (group DIPLOMACY_FAVOR). This modifier is NOT on the completion stage; it
+       is bound to the ACCEPT response (data/gift-gold-action.xml section 9) so it only
+       applies when the target accepts. ModifierTarget=INITIAL on that row means the
+       modifier is applied once (the effect's two amount args handle both directions),
+       avoiding a double application. -->
+  <Modifier id="PLAYER_MOD_GIFT_GOLD_FAVOR" collection="COLLECTION_OWNER" effect="EFFECT_DAE_COMPLETE_GRANT_FAVORS_GRIEVANCES" permanent="true">
+    <Argument name="FavorsAmount">10</Argument>
+    <Argument name="TargetFavorsAmount">10</Argument>
+    <Argument name="EventType">FAVOR_FROM_ENDEAVOR</Argument>
+  </Modifier>
+
+</GameEffects>
