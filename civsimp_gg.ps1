@@ -169,6 +169,87 @@ function Pause-AtEnd {
 }
 
 # ============================================================================
+#  DESKTOP-APP INSTALL  (compiled-exe only; fail-soft; idempotent)
+# ----------------------------------------------------------------------------
+#  On a successful install, AND only when running as the compiled ps2exe .exe
+#  (not the iex/irm one-liner under powershell.exe/pwsh.exe), copy the running
+#  exe to a stable per-user home and (re)create a Desktop shortcut with the
+#  embedded gold-coin icon. Wrapped so ANY failure is swallowed and never
+#  breaks the install.
+# ============================================================================
+function New-DesktopApp {
+    # ----- 0) Determine the running image path -----------------------------
+    $selfPath = $null
+    try {
+        $selfPath = [System.Diagnostics.Process]::GetCurrentProcess().MainModule.FileName
+    } catch { return }            # can't tell who we are -> do nothing, silently
+    if ([string]::IsNullOrWhiteSpace($selfPath) -or -not (Test-Path -LiteralPath $selfPath)) { return }
+
+    # ----- 1) EXE-ONLY GUARD ----------------------------------------------
+    # The host is itself a .exe, so do NOT key off the extension. Reject the
+    # known PowerShell host names; anything else is our compiled exe.
+    $leaf = [System.IO.Path]::GetFileName($selfPath)
+    $hostNames = @('powershell.exe','pwsh.exe','powershell_ise.exe')
+    if ($hostNames -contains $leaf.ToLowerInvariant()) { return }   # one-liner path: skip entirely
+    if ([System.IO.Path]::GetExtension($selfPath).ToLowerInvariant() -ne '.exe') { return }
+
+    try {
+        # ----- 2) Stable per-user home + filename --------------------------
+        $appName   = 'Civ Simp Gold Gifting'
+        $homeDir   = Join-Path $env:LOCALAPPDATA 'CivSimpGoldGifting'
+        $stableExe = Join-Path $homeDir ($appName + '.exe')
+
+        # ----- 3) Copy running exe -> stable home (idempotent; skip self) --
+        $runningFull = [System.IO.Path]::GetFullPath($selfPath)
+        $stableFull  = [System.IO.Path]::GetFullPath($stableExe)
+        $isSelf = [string]::Equals($runningFull, $stableFull, [System.StringComparison]::OrdinalIgnoreCase)
+
+        if (-not $isSelf) {
+            try {
+                New-Item -ItemType Directory -Path $homeDir -Force -ErrorAction Stop | Out-Null
+                Copy-Item -LiteralPath $selfPath -Destination $stableExe -Force -ErrorAction Stop
+            } catch {
+                # Couldn't stage the stable copy (locked / perms): fall back to
+                # pointing the shortcut at the exe we ARE running.
+                $stableExe = $selfPath
+            }
+        }
+        if (-not (Test-Path -LiteralPath $stableExe)) { $stableExe = $selfPath }
+
+        # ----- 4) Desktop path (OneDrive-redirect safe) --------------------
+        $desktop = [Environment]::GetFolderPath([Environment+SpecialFolder]::DesktopDirectory)
+        if ([string]::IsNullOrWhiteSpace($desktop)) {
+            $desktop = [Environment]::GetFolderPath([Environment+SpecialFolder]::Desktop)
+        }
+        if ([string]::IsNullOrWhiteSpace($desktop) -or -not (Test-Path -LiteralPath $desktop)) { return }
+        $lnkPath = Join-Path $desktop ($appName + '.lnk')
+
+        # ----- 5) Create / refresh the shortcut via WScript.Shell ----------
+        $wsh = $null
+        try {
+            $wsh = New-Object -ComObject WScript.Shell
+            $sc  = $wsh.CreateShortcut($lnkPath)
+            $sc.TargetPath       = $stableExe
+            $sc.WorkingDirectory = [System.IO.Path]::GetDirectoryName($stableExe)
+            $sc.IconLocation     = "$stableExe,0"
+            $sc.Description       = 'Civ Simp Gold Gifting - run again to update the mod'
+            $sc.Save()
+        } finally {
+            if ($wsh) { try { [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($wsh) } catch { } }
+        }
+
+        # ----- 6) Friendly note --------------------------------------------
+        Write-Host ""
+        Say "  I also placed a shortcut on your Desktop:" White
+        Say ("     " + $appName + "   (gold-coin icon)") Yellow
+        Say "  Double-click it any time to re-run this setup and pull the latest mod." Gray
+    }
+    catch {
+        try { Say "  (Note: couldn't add the Desktop shortcut this time - the mod is still installed fine.)" DarkGray } catch { }
+    }
+}
+
+# ============================================================================
 #  MAIN
 # ============================================================================
 $installOK = $false
@@ -394,6 +475,9 @@ if ($installOK) {
     Write-Host "     an update later, just run this setup again." -ForegroundColor Yellow
     Write-Host ""
     Type-Line "  May your treasury be generous and your rivals grateful." Green
+
+    # Make it a real app on the Desktop (compiled-exe only; fail-soft).
+    New-DesktopApp
 }
 
 Pause-AtEnd
