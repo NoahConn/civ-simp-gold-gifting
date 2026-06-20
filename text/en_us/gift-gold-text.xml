@@ -19,5 +19,8 @@
     <Row Tag="LOC_DIPLOMACY_PROJECT_GIFT_GOLD_ACCEPT">
       <Text>Accept {1_initialName}'s [icon:YIELD_GOLD]Gold gift.</Text>
     </Row>
+    <Row Tag="LOC_DIPLOMACY_PROJECT_GIFT_GOLD_REJECT">
+      <Text>Decline {1_initialName}'s [icon:YIELD_GOLD]Gold gift.</Text>
+    </Row>
   </EnglishText>
 </Database>

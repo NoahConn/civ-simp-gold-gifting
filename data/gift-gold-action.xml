@@ -111,14 +111,28 @@
     <Row DiplomacyActionType="DIPLOMACY_ACTION_GIFT_GOLD" InfCostHostile="0" InfCostUnfriendly="0" InfCostNeutral="0" InfCostFriendly="0" InfCostHelpful="0"/>
   </DiplomaticActionInfluenceCosts>
 
-  <!-- 9) Response outcomes. We declare NO DiplomaticActionResponses rows (matching
-         declinable base endeavors like IMPROVE_TRADE_RELATIONS, which surface the
-         accept/decline buttons via the engine). DiplomaticActionResponseModifiers
-         binds the relationship favor to the ACCEPT response, so the favor fires
-         only when the receiver accepts. The base game uses this same table to
-         apply grievances on REJECT; an ACCEPT-side row is the symmetric case
-         (see docs/schema-notes.md - confirm in-game that ACCEPT rows fire).
-         No REJECT row -> declining is a clean no-op (influence already refunded). -->
+  <!-- 9) Response path. THE KEY FIX. The engine builds the accept/decline buttons
+         from the DiplomaticActionResponses table (it runs a literal
+         "SELECT ... FROM DiplomaticActionResponses" - confirmed in the engine
+         binary). With NO row here, the engine resolves DIPLOMACY_RESPONSE_NOT_NEEDED
+         and the action silently AUTO-COMPLETES with no target reaction (target=-1) -
+         exactly the bug we observed in every test. Base "Send Aid" (SEND_GOLD)
+         reacts solely because of its ACCEPT row (diplomacy-actions.xml:936); an
+         earlier rewrite of this mod mistakenly DELETED ours and replaced it with
+         DiplomaticActionResponseModifiers - a DIFFERENT table that only attaches
+         effects AFTER a response and does NOT create one. ACCEPT + REJECT give the
+         receiver a real choice (like FORM_ALLIANCE, :941-942). -->
+  <DiplomaticActionResponses>
+    <Row DiplomacyActionType="DIPLOMACY_ACTION_GIFT_GOLD" DiplomaticResponseType="DIPLOMACY_RESPONSE_ACCEPT" InfCost="0" Name="LOC_DIPLOMACY_RESPONSE_ACCEPT" Description="LOC_DIPLOMACY_PROJECT_GIFT_GOLD_ACCEPT"/>
+    <Row DiplomacyActionType="DIPLOMACY_ACTION_GIFT_GOLD" DiplomaticResponseType="DIPLOMACY_RESPONSE_REJECT" InfCost="0" Name="LOC_DIPLOMACY_RESPONSE_REJECT" Description="LOC_DIPLOMACY_PROJECT_GIFT_GOLD_REJECT"/>
+  </DiplomaticActionResponses>
+
+  <!-- Effects that attach AFTER a response is chosen (this table does NOT create
+         the response - that's the table above). The relationship favor is bound to
+         ACCEPT. NOTE: base data only ever binds REJECT rows here, so the favor
+         firing on ACCEPT is unconfirmed; if the relationship doesn't move in-game,
+         this favor wiring is the next thing to change. The gold transfer itself is
+         the accept-gated attach wrapper bound in section 5, not here. -->
   <DiplomaticActionResponseModifiers>
     <Row DiplomacyActionType="DIPLOMACY_ACTION_GIFT_GOLD"
          DiplomaticResponseType="DIPLOMACY_RESPONSE_ACCEPT"
