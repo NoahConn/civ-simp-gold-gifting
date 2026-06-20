@@ -6,6 +6,13 @@ directly to *any* met leader (not only allies) and improving the relationship be
 - **Mod id:** `civ-simp-gold-gifting`
 - **Target game version:** 1.4.0 (Test of Time)
 
+> 📚 **Modding a Civ 7 mod yourself?** This repo doubles as a knowledge base. See
+> [`docs/civ7-modding/`](docs/civ7-modding/README.md) — a verified field guide (mod anatomy,
+> the diplomacy-action system, effects, testing/logs, a symptom→fix
+> [troubleshooting table](docs/civ7-modding/TROUBLESHOOTING.md), and a
+> [gotchas log](docs/civ7-modding/GOTCHAS.md)) written so the next developer skips the
+> troubleshooting we did the hard way.
+
 ## Status
 
 **Phase 1, in test.** The mod adds a new diplomacy action `DIPLOMACY_ACTION_GIFT_GOLD`: an
